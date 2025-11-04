@@ -4,3 +4,5 @@
 - POST /api/courses/{id}/publish (DOCENTE)
 - POST /api/courses/{id}/lessons (DOCENTE)
 - POST /api/courses/{id}/enroll (ESTUDIANTE)
+
+## Ejemplos cURL: lista y crear curso
