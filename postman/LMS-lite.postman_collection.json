@@ -1,0 +1,7 @@
+﻿{
+  "info": { "name": "LMS Lite", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "item": [
+    { "name": "health", "request": { "method": "GET", "url": "{{base}}/api/health" } },
+    { "name": "courses list", "request": { "method": "GET", "url": "{{base}}/api/courses/" } }
+  ]
+}
