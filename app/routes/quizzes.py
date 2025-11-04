@@ -1,9 +1,10 @@
-﻿from flask import Blueprint, request
+from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from .. import db
 from ..models import Quiz, Pregunta, Opcion, IntentoQuiz
 
 bp = Blueprint("quizzes", __name__)
+
 
 @bp.get("/<int:quiz_id>")
 def get_quiz(quiz_id):
@@ -12,6 +13,7 @@ def get_quiz(quiz_id):
     return {"id": q.id, "curso_id": q.curso_id, "titulo": q.titulo,
             "tiempo_limite_min": q.tiempo_limite_min, "intentos_max": q.intentos_max,
             "preguntas": total_p}
+
 
 @bp.get("/<int:quiz_id>/questions")
 @jwt_required()
@@ -27,6 +29,7 @@ def list_questions(quiz_id):
         })
     return payload
 
+
 @bp.post("/")
 @jwt_required()
 def create_quiz():
@@ -34,61 +37,75 @@ def create_quiz():
     q = Quiz(curso_id=data["curso_id"], titulo=data["titulo"],
              tiempo_limite_min=data.get("tiempo_limite_min", 20),
              intentos_max=data.get("intentos_max", 2))
-    db.session.add(q); db.session.commit()
+    db.session.add(q)
+    db.session.commit()
     return {"id": q.id, "titulo": q.titulo}, 201
+
 
 @bp.post("/<int:quiz_id>/questions")
 @jwt_required()
 def add_question(quiz_id):
     data = request.get_json() or {}
     p = Pregunta(quiz_id=quiz_id, enunciado=data["enunciado"], tipo=data.get("tipo", "MULTIPLE"))
-    db.session.add(p); db.session.flush()
+    db.session.add(p)
+    db.session.flush()
     opts = []
     for opt in data.get("opciones", []):
         obj = Opcion(pregunta_id=p.id, texto=opt["texto"], correcta=opt.get("correcta", False))
-        db.session.add(obj); db.session.flush()
+        db.session.add(obj)
+        db.session.flush()
         opts.append({"id": obj.id, "texto": obj.texto, "correcta": obj.correcta})
     db.session.commit()
     return {"id": p.id, "enunciado": p.enunciado, "opciones": opts}, 201
+
 
 @bp.post("/<int:quiz_id>/attempts")
 @jwt_required()
 def start_attempt(quiz_id):
     user_id = int(get_jwt_identity())
     it = IntentoQuiz(quiz_id=quiz_id, estudiante_id=user_id)
-    db.session.add(it); db.session.commit()
+    db.session.add(it)
+    db.session.commit()
     return {"intento_id": it.id}
+
 
 @bp.post("/attempts/<int:intento_id>/submit")
 @jwt_required()
 def submit_attempt(intento_id):
     data = request.get_json() or {}
     respuestas = data.get("respuestas", {})
-    total = 0; correctas = 0
+    total = 0
+    correctas = 0
     for pid, oid in respuestas.items():
         total += 1
         op = Opcion.query.get(oid)
         if op and op.correcta:
             correctas += 1
-    puntaje = round((correctas/total)*100, 2) if total else 0.0
+    puntaje = round((correctas / total) * 100, 2) if total else 0.0
     intento = IntentoQuiz.query.get_or_404(intento_id)
-    intento.puntaje = puntaje; intento.entregado = True
+    intento.puntaje = puntaje
+    intento.entregado = True
     db.session.commit()
     return {"puntaje": puntaje, "correctas": correctas, "total": total}
 # --- Entrega detallada: control de tiempo y feedback por pregunta ---
+
 
 from datetime import datetime, timedelta
 from flask import request
 from flask_jwt_extended import jwt_required
 
+
 def _now_utc():
     return datetime.utcnow()
+
 
 def _json_ok(data=None, status=200):
     return (data or {"ok": True}, status)
 
+
 def _json_err(msg, status=400):
     return ({"error": msg}, status)
+
 
 @bp.post("/attempts/<int:intento_id>/submit-detailed")
 @jwt_required()
@@ -131,14 +148,17 @@ def submit_detailed(intento_id: int):
 
     puntaje = round((correctas / total) * 100, 2) if total else 0.0
     intento.puntaje = puntaje
-    db.session.add(intento); db.session.commit()
+    db.session.add(intento)
+    db.session.commit()
 
     return _json_ok({"correctas": correctas, "total": total, "puntaje": puntaje, "detalle": detalle})
 # --- Extensiones de quizzes: estadísticas, edición de preguntas y opciones, ver intento ---
 
+
 from flask import request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
+
 
 @bp.get("/<int:quiz_id>/stats")
 @jwt_required()
@@ -153,6 +173,7 @@ def quiz_stats(quiz_id: int):
     avg = db.session.query(func.avg(IntentoQuiz.puntaje)).filter(IntentoQuiz.quiz_id == quiz_id).scalar()
     best = db.session.query(func.max(IntentoQuiz.puntaje)).filter(IntentoQuiz.quiz_id == quiz_id).scalar()
     return _json_ok({"intentos": int(cnt), "promedio": float(avg or 0.0), "mejor": float(best or 0.0)})
+
 
 @bp.patch("/questions/<int:pregunta_id>")
 @jwt_required()
@@ -174,8 +195,10 @@ def update_question(pregunta_id: int):
         except Exception:
             return _json_err("tipo inválido (MULTIPLE|VF)")
 
-    db.session.add(p); db.session.commit()
+    db.session.add(p)
+    db.session.commit()
     return _json_ok({"id": p.id, "enunciado": p.enunciado, "tipo": p.tipo.value})
+
 
 @bp.post("/questions/<int:pregunta_id>/options")
 @jwt_required()
@@ -191,8 +214,10 @@ def add_option(pregunta_id: int):
         return _json_err("texto requerido")
     correcta = bool(body.get("correcta", False))
     op = Opcion(pregunta_id=p.id, texto=t, correcta=correcta)
-    db.session.add(op); db.session.commit()
+    db.session.add(op)
+    db.session.commit()
     return _json_ok({"id": op.id, "texto": op.texto, "correcta": op.correcta}, 201)
+
 
 @bp.delete("/questions/<int:pregunta_id>/options/<int:opcion_id>")
 @jwt_required()
@@ -205,8 +230,10 @@ def delete_option(pregunta_id: int, opcion_id: int):
     op = Opcion.query.get(opcion_id)
     if not op or op.pregunta_id != p.id:
         return _json_err("opción no encontrada", 404)
-    db.session.delete(op); db.session.commit()
+    db.session.delete(op)
+    db.session.commit()
     return _json_ok({"ok": True})
+
 
 @bp.get("/attempts/<int:intento_id>")
 @jwt_required()

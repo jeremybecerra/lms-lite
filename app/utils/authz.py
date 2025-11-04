@@ -1,5 +1,6 @@
-﻿from functools import wraps
+from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request, get_jwt
+
 
 def require_role(*roles):
     """

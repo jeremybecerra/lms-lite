@@ -1,4 +1,4 @@
-﻿from flask import Flask
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
@@ -8,6 +8,7 @@ import os
 load_dotenv()
 db = SQLAlchemy()
 jwt = JWTManager()
+
 
 def create_app(testing: bool = False):
     app = Flask(__name__, instance_relative_config=True)

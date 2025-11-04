@@ -6,20 +6,24 @@ from ..utils.authz import require_role
 
 bp = Blueprint("courses", __name__)
 
+
 @bp.get("/")
 def list_public():
     cursos = Curso.query.filter_by(estado=EstadoCurso.PUBLICADO).all()
     return {"items": [{"id": c.id, "titulo": c.titulo, "docente_id": c.docente_id} for c in cursos]}
+
 
 @bp.get("/<int:curso_id>")
 def get_course(curso_id):
     c = Curso.query.get_or_404(curso_id)
     return {"id": c.id, "titulo": c.titulo, "descripcion": c.descripcion, "estado": c.estado.value, "docente_id": c.docente_id}
 
+
 @bp.get("/<int:curso_id>/lessons")
 def list_lessons(curso_id):
     les = Leccion.query.filter_by(curso_id=curso_id).order_by(Leccion.orden.asc()).all()
-    return {"items": [{"id": l.id, "titulo": l.titulo, "orden": l.orden} for l in les]}
+    return {"items": [{"id": leccion.id, "titulo": leccion.titulo, "orden": leccion.orden} for leccion in les]}
+
 
 @bp.post("/")
 @jwt_required()
@@ -30,8 +34,10 @@ def create_course():
     c = Curso(titulo=data["titulo"], descripcion=data.get("descripcion", ""),
               estado=EstadoCurso(data.get("estado", "BORRADOR")),
               docente_id=user_id)
-    db.session.add(c); db.session.commit()
+    db.session.add(c)
+    db.session.commit()
     return {"id": c.id, "titulo": c.titulo}, 201
+
 
 @bp.post("/<int:curso_id>/lessons")
 @jwt_required()
@@ -41,8 +47,10 @@ def add_lesson(curso_id):
     le = Leccion(curso_id=curso_id, titulo=data["titulo"],
                  contenido=data.get("contenido", ""), video_url=data.get("video_url"),
                  orden=data.get("orden", 1))
-    db.session.add(le); db.session.commit()
+    db.session.add(le)
+    db.session.commit()
     return {"id": le.id, "titulo": le.titulo}, 201
+
 
 @bp.post("/<int:curso_id>/publish")
 @jwt_required()
@@ -53,26 +61,33 @@ def publish_course(curso_id):
     db.session.commit()
     return {"ok": True}
 
+
 @bp.post("/<int:curso_id>/enroll")
 @jwt_required()
 def enroll(curso_id):
     user_id = int(get_jwt_identity())
     ins = Inscripcion(estudiante_id=user_id, curso_id=curso_id)
-    db.session.add(ins); db.session.commit()
+    db.session.add(ins)
+    db.session.commit()
     pr = Progreso(estudiante_id=user_id, curso_id=curso_id, porcentaje=0.0)
-    db.session.add(pr); db.session.commit()
+    db.session.add(pr)
+    db.session.commit()
     return {"ok": True, "inscripcion_id": ins.id}
-# --- Extensiones: validación, búsqueda/paginación y endpoints extra ---
+# --- Extensiones: validaciÃ³n, bÃºsqueda/paginaciÃ³n y endpoints extra ---
+
 
 from flask import request
 from werkzeug.exceptions import BadRequest
 from app.utils.authz import docente_required
 
+
 def _json_ok(data=None, status=200):
     return (data or {"ok": True}, status)
 
+
 def _json_err(msg, status=400):
     return ({"error": msg}, status)
+
 
 def _parse_int(name, default, min_value=None, max_value=None):
     raw = request.args.get(name, default)
@@ -86,9 +101,10 @@ def _parse_int(name, default, min_value=None, max_value=None):
         raise BadRequest(f"param '{name}' > {max_value}")
     return v
 
+
 @bp.get("/")
 def list_public_courses():
-    """Lista cursos PUBLICADOS con paginación, búsqueda y orden."""
+    """Lista cursos PUBLICADOS con paginaciÃ³n, bÃºsqueda y orden."""
     from app.models import Curso, EstadoCurso
     q = request.args.get("q", "").strip()
     sort = request.args.get("sort", "titulo")
@@ -115,6 +131,7 @@ def list_public_courses():
     }
     return _json_ok(data)
 
+
 @bp.post("/validate")
 @docente_required
 def validate_course_payload():
@@ -127,6 +144,7 @@ def validate_course_payload():
     if len(descripcion) > 500:
         return _json_err("descripcion muy larga (<=500)")
     return _json_ok({"ok": True})
+
 
 @bp.get("/mine")
 @docente_required
@@ -141,14 +159,16 @@ def list_my_courses():
     })
 # --- Extensiones adicionales de cursos: detalle, update, estados y reordenar lecciones ---
 
+
 from flask import request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.exceptions import NotFound
 from sqlalchemy import func
 
+
 @bp.get("/<int:course_id>")
 def get_course_detail(course_id: int):
-    """Detalle público de un curso (id, titulo, estado, #lecciones)."""
+    """Detalle pÃºblico de un curso (id, titulo, estado, #lecciones)."""
     from app.models import Curso, Leccion
     c = Curso.query.get(course_id)
     if not c:
@@ -158,13 +178,14 @@ def get_course_detail(course_id: int):
         "id": c.id,
         "titulo": c.titulo,
         "estado": c.estado.value,
-        "lecciones": [{"id": l.id, "titulo": l.titulo, "orden": l.orden} for l in lessons]
+        "lecciones": [{"id": leccion.id, "titulo": leccion.titulo, "orden": leccion.orden} for leccion in lessons]
     })
+
 
 @bp.patch("/<int:course_id>")
 @docente_required
 def update_course(course_id: int):
-    """Actualiza título/descripcion; verifica ownership del docente."""
+    """Actualiza tÃ­tulo/descripcion; verifica ownership del docente."""
     from app.models import Curso, db
     uid = int(get_jwt_identity())
     c = Curso.query.get(course_id)
@@ -184,13 +205,15 @@ def update_course(course_id: int):
     if descripcion:
         c.descripcion = descripcion
 
-    db.session.add(c); db.session.commit()
+    db.session.add(c)
+    db.session.commit()
     return _json_ok({"id": c.id, "titulo": c.titulo})
+
 
 @bp.post("/<int:course_id>/unpublish")
 @docente_required
 def unpublish_course(course_id: int):
-    """Pasa el curso a BORRADOR (deja de ser público)."""
+    """Pasa el curso a BORRADOR (deja de ser pÃºblico)."""
     from app.models import Curso, EstadoCurso, db
     uid = int(get_jwt_identity())
     c = Curso.query.get(course_id)
@@ -199,8 +222,10 @@ def unpublish_course(course_id: int):
     if c.docente_id != uid:
         return _json_err("no autorizado", 403)
     c.estado = EstadoCurso.BORRADOR
-    db.session.add(c); db.session.commit()
+    db.session.add(c)
+    db.session.commit()
     return _json_ok({"ok": True, "estado": c.estado.value})
+
 
 @bp.post("/<int:course_id>/hide")
 @docente_required
@@ -214,8 +239,10 @@ def hide_course(course_id: int):
     if c.docente_id != uid:
         return _json_err("no autorizado", 403)
     c.estado = EstadoCurso.OCULTO
-    db.session.add(c); db.session.commit()
+    db.session.add(c)
+    db.session.commit()
     return _json_ok({"ok": True, "estado": c.estado.value})
+
 
 @bp.post("/<int:course_id>/lessons/reorder")
 @docente_required
@@ -231,7 +258,7 @@ def reorder_lessons(course_id: int):
 
     body = request.get_json(silent=True) or []
     if not isinstance(body, list):
-        return _json_err("formato inválido (se espera lista)")
+        return _json_err("formato invÃ¡lido (se espera lista)")
 
     # Mapear {leccion_id -> orden}
     desired = {}
@@ -240,24 +267,25 @@ def reorder_lessons(course_id: int):
             lid = int(item.get("id"))
             orden = int(item.get("orden"))
         except Exception:
-            return _json_err("id/orden inválidos (enteros)")
+            return _json_err("id/orden invÃ¡lidos (enteros)")
         desired[lid] = orden
 
     lessons = Leccion.query.filter_by(curso_id=c.id).all()
-    for l in lessons:
-        if l.id in desired:
-            l.orden = desired[l.id]
-            db.session.add(l)
+    for leccion in lessons:
+        if leccion.id in desired:
+            leccion.orden = desired[leccion.id]
+            db.session.add(leccion)
     db.session.commit()
 
-    out = [{"id": l.id, "titulo": l.titulo, "orden": l.orden} for l in
+    out = [{"id": leccion.id, "titulo": leccion.titulo, "orden": leccion.orden} for leccion in
            Leccion.query.filter_by(curso_id=c.id).order_by(Leccion.orden.asc()).all()]
     return _json_ok({"items": out})
+
 
 @bp.get("/<int:course_id>/metrics")
 @docente_required
 def course_metrics(course_id: int):
-    """Métricas simples: inscritos, lecciones totales."""
+    """MÃ©tricas simples: inscritos, lecciones totales."""
     from app.models import Curso, Leccion, Inscripcion
     c = Curso.query.get(course_id)
     if not c:
