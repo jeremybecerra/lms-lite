@@ -1,0 +1,264 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <title>LMS Lite – Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+         max-width:1000px;margin:24px auto;padding:0 16px;}
+    h1{margin-bottom:8px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    fieldset{border:1px solid #ddd;border-radius:10px;padding:12px}
+    legend{font-weight:600}
+    button{padding:8px 12px;border-radius:8px;border:1px solid #999;cursor:pointer}
+    input,select{padding:6px 8px;border:1px solid #bbb;border-radius:6px;width:100%}
+    label{font-size:12px;color:#555}
+    .row{display:flex;gap:8px;align-items:center}
+    .row > *{flex:1}
+    #out{background:#0b1020;color:#e6f0ff;padding:12px;border-radius:10px;white-space:pre-wrap;min-height:160px}
+    .ok{color:#11822d;font-weight:600}
+    .warn{color:#b35b00}
+    .muted{color:#666;font-size:12px}
+  </style>
+</head>
+<body>
+  <h1>LMS Lite · Demo local</h1>
+  <p class="muted">API: <code>http://127.0.0.1:5000</code> — Asegúrate de tener el servidor corriendo.</p>
+
+  <div class="grid">
+    <fieldset>
+      <legend>Login Docente</legend>
+      <div class="row"><label>Email</label><input id="docEmail" value="docente@demo.com"></div>
+      <div class="row"><label>Password</label><input id="docPwd" type="password" value="demo123"></div>
+      <button id="btnLoginDoc">Login Docente</button>
+      <div id="docStatus" class="muted"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Login Estudiante</legend>
+      <div class="row"><label>Email</label><input id="estEmail" value="est@demo.com"></div>
+      <div class="row"><label>Password</label><input id="estPwd" type="password" value="demo123"></div>
+      <button id="btnLoginEst">Login Estudiante</button>
+      <div id="estStatus" class="muted"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Curso (DOCENTE)</legend>
+      <div class="row"><label>Título</label><input id="tituloCurso" value="Python Básico"></div>
+      <div class="row"><label>Descripción</label><input id="descCurso" value="Curso demo"></div>
+      <div class="row">
+        <button id="btnCrearCurso">Crear curso</button>
+        <button id="btnPublicarCurso">Publicar</button>
+      </div>
+      <div class="row">
+        <label>Lección título</label><input id="lecTitulo" value="Intro">
+      </div>
+      <div class="row">
+        <label>Contenido</label><input id="lecCont" value="Bienvenidos">
+      </div>
+      <div class="row">
+        <label>Orden</label><input id="lecOrden" type="number" value="1">
+      </div>
+      <button id="btnAgregarLeccion">Agregar lección</button>
+      <div class="muted">Curso actual: <span id="cursoActual">—</span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Inscripción / Lecciones</legend>
+      <div class="row">
+        <button id="btnListarPublicos">Listar cursos públicos</button>
+        <button id="btnInscribir">Inscribir (ESTUDIANTE)</button>
+      </div>
+      <div class="row">
+        <button id="btnVerLecciones">Ver lecciones del curso actual</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Quiz (DOCENTE)</legend>
+      <div class="row"><label>Título Quiz</label><input id="quizTitulo" value="Quiz 1"></div>
+      <div class="row">
+        <button id="btnCrearQuiz">Crear quiz</button>
+      </div>
+      <div class="row"><label>Pregunta</label><input id="pregEnun" value="2 + 2 = ?"></div>
+      <div class="row"><label>Opción correcta</label><input id="optOk" value="4"></div>
+      <div class="row"><label>Opción incorrecta</label><input id="optBad" value="5"></div>
+      <button id="btnAgregarPregunta">Agregar pregunta</button>
+      <div class="muted">Quiz actual: <span id="quizActual">—</span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Rendir (ESTUDIANTE)</legend>
+      <div class="row">
+        <button id="btnIniciarIntento">Iniciar intento</button>
+        <button id="btnEntregar">Entregar (elige la correcta)</button>
+      </div>
+    </fieldset>
+  </div>
+
+  <h3>Salida</h3>
+  <pre id="out"></pre>
+
+  <script>
+  const API = "http://127.0.0.1:5000";
+  let tokenDoc=null, tokenEst=null;
+  let cursoId=null, quizId=null, preguntaId=null, opcionCorrectaId=null, intentoId=null;
+
+  async function http(method, path, body, token){
+    const res = await fetch(API+path,{
+      method,
+      headers: {
+        ...(body ? {"Content-Type":"application/json"} : {}),
+        ...(token ? {"Authorization":"Bearer "+token} : {})
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error(res.status+" "+txt);
+    }
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("application/json") ? res.json() : res.text();
+  }
+  const get=(p,t)=>http("GET",p,null,t);
+  const post=(p,b,t)=>http("POST",p,b,t);
+  const log=(m,o)=>{document.getElementById("out").textContent += "\\n"+m+": "+(typeof o==="string"?o:JSON.stringify(o,null,2));};
+
+  // Login Docente
+  document.getElementById("btnLoginDoc").onclick = async ()=>{
+    try{
+      const email = document.getElementById("docEmail").value;
+      const password = document.getElementById("docPwd").value;
+      const r = await post("/api/auth/login",{email,password});
+      tokenDoc = r.access_token;
+      document.getElementById("docStatus").innerHTML = '<span class="ok">Docente logeado</span>';
+      log("login docente", r);
+    }catch(e){ log("error login docente", e.message); }
+  };
+
+  // Login Estudiante
+  document.getElementById("btnLoginEst").onclick = async ()=>{
+    try{
+      const email = document.getElementById("estEmail").value;
+      const password = document.getElementById("estPwd").value;
+      const r = await post("/api/auth/login",{email,password});
+      tokenEst = r.access_token;
+      document.getElementById("estStatus").innerHTML = '<span class="ok">Estudiante logeado</span>';
+      log("login estudiante", r);
+    }catch(e){ log("error login estudiante", e.message); }
+  };
+
+  // Crear curso
+  document.getElementById("btnCrearCurso").onclick = async ()=>{
+    try{
+      const titulo = document.getElementById("tituloCurso").value;
+      const descripcion = document.getElementById("descCurso").value;
+      const c = await post("/api/courses/", {titulo, descripcion}, tokenDoc);
+      cursoId = c.id;
+      document.getElementById("cursoActual").textContent = "#"+cursoId+" "+c.titulo;
+      log("curso creado", c);
+    }catch(e){ log("error crear curso", e.message); }
+  };
+
+  // Publicar
+  document.getElementById("btnPublicarCurso").onclick = async ()=>{
+    if(!cursoId) return alert("Primero crea el curso");
+    try{
+      const r = await post(`/api/courses/${cursoId}/publish`, {}, tokenDoc);
+      log("publicado", r);
+    }catch(e){ log("error publicar", e.message); }
+  };
+
+  // Agregar lección
+  document.getElementById("btnAgregarLeccion").onclick = async ()=>{
+    if(!cursoId) return alert("Primero crea el curso");
+    try{
+      const titulo = document.getElementById("lecTitulo").value;
+      const contenido = document.getElementById("lecCont").value;
+      const orden = +document.getElementById("lecOrden").value;
+      const r = await post(`/api/courses/${cursoId}/lessons`, {titulo, contenido, orden}, tokenDoc);
+      log("lección creada", r);
+    }catch(e){ log("error lección", e.message); }
+  };
+
+  // Listar públicos
+  document.getElementById("btnListarPublicos").onclick = async ()=>{
+    try{
+      const r = await get("/api/courses/");
+      log("cursos públicos", r);
+      if(r.items && r.items.length && !cursoId){ cursoId = r.items[0].id; document.getElementById("cursoActual").textContent = "#"+cursoId+" "+r.items[0].titulo; }
+    }catch(e){ log("error listar cursos", e.message); }
+  };
+
+  // Inscribir
+  document.getElementById("btnInscribir").onclick = async ()=>{
+    if(!cursoId) return alert("Necesitas un cursoId (crea uno o lista públicos)");
+    try{
+      const r = await post(`/api/courses/${cursoId}/enroll`, {}, tokenEst);
+      log("inscripción", r);
+    }catch(e){ log("error inscribir", e.message); }
+  };
+
+  // Ver lecciones
+  document.getElementById("btnVerLecciones").onclick = async ()=>{
+    if(!cursoId) return alert("Necesitas cursoId");
+    try{
+      const r = await get(`/api/courses/${cursoId}/lessons`);
+      log("lecciones", r);
+    }catch(e){ log("error ver lecciones", e.message); }
+  };
+
+  // Crear quiz
+  document.getElementById("btnCrearQuiz").onclick = async ()=>{
+    if(!cursoId) return alert("Necesitas cursoId");
+    try{
+      const titulo = document.getElementById("quizTitulo").value;
+      const r = await post("/api/quizzes/", {curso_id:cursoId, titulo, tiempo_limite_min:20, intentos_max:2}, tokenDoc);
+      quizId = r.id;
+      document.getElementById("quizActual").textContent = "#"+quizId+" "+titulo;
+      log("quiz creado", r);
+    }catch(e){ log("error crear quiz", e.message); }
+  };
+
+  // Agregar pregunta
+  document.getElementById("btnAgregarPregunta").onclick = async ()=>{
+    if(!quizId) return alert("Primero crea el quiz");
+    try{
+      const enunciado = document.getElementById("pregEnun").value;
+      const ok = document.getElementById("optOk").value;
+      const bad = document.getElementById("optBad").value;
+      const r = await post(`/api/quizzes/${quizId}/questions`, {
+        enunciado, tipo:"MULTIPLE",
+        opciones:[{texto:ok, correcta:true},{texto:bad, correcta:false}]
+      }, tokenDoc);
+      preguntaId = r.id;
+      opcionCorrectaId = (r.opciones||[]).find(o=>o.correcta)?.id || null;
+      log("pregunta creada", r);
+    }catch(e){ log("error agregar pregunta", e.message); }
+  };
+
+  // Iniciar intento
+  document.getElementById("btnIniciarIntento").onclick = async ()=>{
+    if(!quizId) return alert("Necesitas quizId");
+    try{
+      const r = await post(`/api/quizzes/${quizId}/attempts`, {}, tokenEst);
+      intentoId = r.intento_id;
+      log("intento iniciado", r);
+    }catch(e){ log("error iniciar intento", e.message); }
+  };
+
+  // Entregar
+  document.getElementById("btnEntregar").onclick = async ()=>{
+    if(!intentoId) return alert("Primero inicia intento");
+    if(!preguntaId || !opcionCorrectaId) return alert("Agrega la pregunta primero");
+    try{
+      const r = await post(`/api/quizzes/attempts/${intentoId}/submit`, {
+        respuestas: { [String(preguntaId)] : opcionCorrectaId }
+      }, tokenEst);
+      log("entrega", r);
+    }catch(e){ log("error entregar", e.message); }
+  };
+  </script>
+</body>
+</html>
